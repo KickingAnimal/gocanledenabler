@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -58,6 +59,29 @@ func readConfiguration(ctx context.Context, client *gmlan.Client, target diagnos
 		tx(gocan.NewFrame(target.requestID, []byte{0x30, 0x00, 0x00}))
 	}
 	return data, nil
+}
+
+func verifyConfiguration(ctx context.Context, client *gmlan.Client, target diagnosticTarget, tx func(gocan.Frame)) ([]byte, error) {
+	const attempts = 8
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		var data []byte
+		data, err = readConfiguration(ctx, client, target, tx)
+		if err == nil {
+			return data, nil
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || attempt == attempts-1 {
+			return nil, err
+		}
+		timer := time.NewTimer(350 * time.Millisecond)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		}
+	}
+	return nil, err
 }
 
 func stateName(value byte) string {
@@ -192,7 +216,7 @@ func toggleConfiguration(ctx context.Context, bus *gocan.Bus, client *gmlan.Clie
 		return "", fmt.Errorf("write %s DID 0x%02X: %w", target.name, target.did, err)
 	}
 
-	verified, err := readConfiguration(ctx, client, target, tx)
+	verified, err := verifyConfiguration(ctx, client, target, tx)
 	if err != nil {
 		return "", fmt.Errorf("verify %s DID 0x%02X: %w", target.name, target.did, err)
 	}
