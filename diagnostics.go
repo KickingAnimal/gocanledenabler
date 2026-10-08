@@ -73,9 +73,9 @@ func formatDiagnosticFrames(service byte, target diagnosticTarget, data []byte) 
 		return fmt.Sprintf("%02X %X", len(payload), payload)
 	}
 
-	frames := []string{fmt.Sprintf("10 %02X %X", len(payload), payload[:4])}
+	frames := []string{fmt.Sprintf("10 %02X %X", len(payload), payload[:6])}
 	sequence := byte(0x21)
-	for offset := 4; offset < len(payload); {
+	for offset := 6; offset < len(payload); {
 		end := offset + 7
 		if end > len(payload) {
 			end = len(payload)
@@ -92,9 +92,9 @@ func diagnosticRequestFrames(target diagnosticTarget, service byte, data []byte)
 	if len(payload) <= 7 {
 		return []gocan.Frame{gocan.NewFrame(target.requestID, append([]byte{byte(len(payload))}, payload...))}
 	}
-	frames := []gocan.Frame{gocan.NewFrame(target.requestID, append([]byte{0x10, byte(len(payload))}, payload[:4]...))}
+	frames := []gocan.Frame{gocan.NewFrame(target.requestID, append([]byte{0x10, byte(len(payload))}, payload[:6]...))}
 	sequence := byte(0x21)
-	for offset := 4; offset < len(payload); {
+	for offset := 6; offset < len(payload); {
 		end := offset + 7
 		if end > len(payload) {
 			end = len(payload)
@@ -115,7 +115,62 @@ func logDiagnosticRequest(tx func(gocan.Frame), target diagnosticTarget, service
 	}
 }
 
-func toggleConfiguration(ctx context.Context, client *gmlan.Client, target diagnosticTarget, desired byte, dryRun bool, tx func(gocan.Frame)) (string, error) {
+func writeConfiguration(ctx context.Context, bus *gocan.Bus, target diagnosticTarget, data []byte, tx func(gocan.Frame)) error {
+	payload := append([]byte{0x3B, target.did}, data...)
+	if len(payload) <= 7 {
+		frame := gocan.NewFrame(target.requestID, append([]byte{byte(len(payload))}, payload...))
+		if tx != nil {
+			tx(frame)
+		}
+		response, err := bus.Request(ctx, frame, target.responseID)
+		if err != nil {
+			return fmt.Errorf("write response: %w", err)
+		}
+		if err := gmlan.CheckErr(response); err != nil {
+			return err
+		}
+		if response.Data[1] != 0x7B {
+			return fmt.Errorf("unexpected write response: %X", response.Data[:response.Length])
+		}
+		return nil
+	}
+
+	first := gocan.NewFrame(target.requestID, append([]byte{0x10, byte(len(payload))}, payload[:6]...))
+	if tx != nil {
+		tx(first)
+	}
+	flowControl, err := bus.Request(ctx, first, target.responseID)
+	if err != nil {
+		return fmt.Errorf("write flow control: %w", err)
+	}
+	if flowControl.Data[0] != 0x30 {
+		if err := gmlan.CheckErr(flowControl); err != nil {
+			return err
+		}
+		return fmt.Errorf("unexpected write flow control: %X", flowControl.Data[:flowControl.Length])
+	}
+
+	sequence := byte(0x21)
+	for offset := 6; offset < len(payload); {
+		end := offset + 7
+		if end > len(payload) {
+			end = len(payload)
+		}
+		frame := gocan.NewFrame(target.requestID, append([]byte{sequence}, payload[offset:end]...))
+		if tx != nil {
+			tx(frame)
+		}
+		err = bus.Send(ctx, frame)
+		if err != nil {
+			return fmt.Errorf("write consecutive frame: %w", err)
+		}
+		offset = end
+		sequence = 0x20 | ((sequence + 1) & 0x0F)
+	}
+	return nil
+}
+
+func toggleConfiguration(ctx context.Context, bus *gocan.Bus, client *gmlan.Client, target diagnosticTarget, desired byte, dryRun bool, tx func(gocan.Frame)) (string, error) {
 	current, err := readConfiguration(ctx, client, target, tx)
 	if err != nil {
 		return "", err
@@ -133,8 +188,7 @@ func toggleConfiguration(ctx context.Context, client *gmlan.Client, target diagn
 		lines = append(lines, fmt.Sprintf("%s DRY RUN: write not sent", target.name))
 		return strings.Join(lines, "\n"), nil
 	}
-	logDiagnosticRequest(tx, target, 0x3B, updated)
-	if err := client.WriteDataByIdentifier(ctx, target.did, updated); err != nil {
+	if err := writeConfiguration(ctx, bus, target, updated, tx); err != nil {
 		return "", fmt.Errorf("write %s DID 0x%02X: %w", target.name, target.did, err)
 	}
 
@@ -173,7 +227,7 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 		responseLog = append(responseLog, time.Now().Format("15:04:05.000")+"  "+text)
 		output.SetText(strings.Join(responseLog, "\n"))
 	}
-	start := func(requestEntry, responseEntry *widget.Entry, target diagnosticTarget, action func(context.Context, *gmlan.Client, diagnosticTarget) (string, error)) {
+	start := func(requestEntry, responseEntry *widget.Entry, target diagnosticTarget, action func(context.Context, *gocan.Bus, *gmlan.Client, diagnosticTarget) (string, error)) {
 		request, err := parseCANID(requestEntry.Text)
 		if err != nil {
 			appendLog("ERROR: " + err.Error())
@@ -198,7 +252,7 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			client := gmlan.New(connected, target.requestID, target.responseID)
-			text, actionErr := action(ctx, client, target)
+			text, actionErr := action(ctx, connected, client, target)
 			fyne.Do(func() {
 				if actionErr != nil {
 					appendLog("ERROR: " + actionErr.Error())
@@ -211,7 +265,7 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 
 	readAction := func(requestEntry, responseEntry *widget.Entry, target diagnosticTarget) func() {
 		return func() {
-			start(requestEntry, responseEntry, target, func(ctx context.Context, client *gmlan.Client, target diagnosticTarget) (string, error) {
+			start(requestEntry, responseEntry, target, func(ctx context.Context, bus *gocan.Bus, client *gmlan.Client, target diagnosticTarget) (string, error) {
 				data, err := readConfiguration(ctx, client, target, tx)
 				if err != nil {
 					return "", err
@@ -223,8 +277,8 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 	toggleAction := func(requestEntry, responseEntry *widget.Entry, target diagnosticTarget, desired byte) func() {
 		return func() {
 			plannedOnly := dryRun.Checked
-			start(requestEntry, responseEntry, target, func(ctx context.Context, client *gmlan.Client, target diagnosticTarget) (string, error) {
-				return toggleConfiguration(ctx, client, target, desired, plannedOnly, tx)
+			start(requestEntry, responseEntry, target, func(ctx context.Context, bus *gocan.Bus, client *gmlan.Client, target diagnosticTarget) (string, error) {
+				return toggleConfiguration(ctx, bus, client, target, desired, plannedOnly, tx)
 			})
 		}
 	}
