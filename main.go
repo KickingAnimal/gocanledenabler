@@ -37,13 +37,14 @@ type wireEntry struct {
 }
 
 var (
-	busPtr     atomic.Pointer[gocan.Bus]
-	statsMu    sync.Mutex
-	stats      = map[uint32]*frameStat{}
-	wireMu     sync.Mutex
-	wireTrace  []wireEntry
-	monitorMu  sync.RWMutex
-	monitorIDs map[uint32]bool
+	busPtr         atomic.Pointer[gocan.Bus]
+	statsMu        sync.Mutex
+	stats          = map[uint32]*frameStat{}
+	wireMu         sync.Mutex
+	wireTrace      []wireEntry
+	monitorMu      sync.RWMutex
+	monitorInclude map[uint32]bool
+	monitorExclude map[uint32]bool
 )
 
 func parseMonitorIDs(value string) (map[uint32]bool, error) {
@@ -66,7 +67,10 @@ func parseMonitorIDs(value string) (map[uint32]bool, error) {
 func monitorPasses(id uint32) bool {
 	monitorMu.RLock()
 	defer monitorMu.RUnlock()
-	return len(monitorIDs) == 0 || monitorIDs[id]
+	if monitorExclude[id] {
+		return false
+	}
+	return len(monitorInclude) == 0 || monitorInclude[id]
 }
 
 func serialPorts() []string {
@@ -195,17 +199,26 @@ func main() {
 	)
 	wireList.HideSeparators = true
 
-	monitorFilter := widget.NewEntry()
-	monitorFilter.SetText("24F,249,64F,649")
+	includeFilter := widget.NewMultiLineEntry()
+	includeFilter.SetText("24F\n249\n64F\n649")
+	includeFilter.SetPlaceHolder("CAN IDs to include, for example 24F or 0x249")
+	excludeFilter := widget.NewMultiLineEntry()
+	excludeFilter.SetPlaceHolder("CAN IDs to exclude")
 	filterStatus := widget.NewLabel("")
-	applyMonitorFilter := func(value string) {
-		ids, err := parseMonitorIDs(value)
+	applyMonitorFilter := func() {
+		include, err := parseMonitorIDs(includeFilter.Text)
+		if err != nil {
+			filterStatus.SetText("Filter error: " + err.Error())
+			return
+		}
+		exclude, err := parseMonitorIDs(excludeFilter.Text)
 		if err != nil {
 			filterStatus.SetText("Filter error: " + err.Error())
 			return
 		}
 		monitorMu.Lock()
-		monitorIDs = ids
+		monitorInclude = include
+		monitorExclude = exclude
 		monitorMu.Unlock()
 		statsMu.Lock()
 		clear(stats)
@@ -217,10 +230,10 @@ func main() {
 		wireRows = nil
 		table.Refresh()
 		wireList.Refresh()
-		filterStatus.SetText(fmt.Sprintf("%d IDs", len(ids)))
+		filterStatus.SetText(fmt.Sprintf("Include: %d IDs, exclude: %d IDs", len(include), len(exclude)))
 	}
-	monitorFilter.OnChanged = applyMonitorFilter
-	applyMonitorFilter(monitorFilter.Text)
+	applyFilter := widget.NewButton("Apply filter", applyMonitorFilter)
+	applyMonitorFilter()
 
 	var cancel context.CancelFunc
 	connect.OnTapped = func() {
@@ -314,10 +327,16 @@ func main() {
 	)
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Monitor", container.NewBorder(
-			container.NewHBox(widget.NewLabel("CAN ID filter:"), monitorFilter, filterStatus),
-			nil, nil, nil,
+			nil, nil, nil, nil,
 			container.NewVSplit(table, container.NewBorder(widget.NewLabel("Wire trace (RX/TX)"), nil, nil, nil, wireList)))),
 		container.NewTabItem("Diagnostics", newDiagnosticsTab(func() *gocan.Bus { return busPtr.Load() }, func(frame gocan.Frame) { recordWire("TX", frame) })),
+		container.NewTabItem("Filter", container.NewBorder(
+			container.NewHBox(applyFilter, filterStatus), nil, nil, nil,
+			container.NewGridWithColumns(2,
+				container.NewBorder(widget.NewLabel("Include"), nil, nil, nil, includeFilter),
+				container.NewBorder(widget.NewLabel("Exclude"), nil, nil, nil, excludeFilter),
+			)),
+		),
 	)
 	window.SetContent(container.NewBorder(top, canvas.NewRectangle(color.Transparent), nil, nil,
 		container.NewBorder(nil, status, nil, nil, tabs)))
