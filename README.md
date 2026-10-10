@@ -1,19 +1,24 @@
 # Go CAN LED Enabler
 
-A Fyne GUI for monitoring CAN traffic and using the UEC/REC diagnostic services through a J2534 adapter.
+A Fyne GUI for setting the UEC/REC light checking settings and monitoring CAN traffic through a J2534 adapter.
 
 The application uses `github.com/roffe/gocan/v2` and its `gmlan` package. ISO-TP framing and GMLAN services are handled by that library.
 
+And special thanks go to:
+- [TrionicTuning.com: "is there a way to turn off CANBUS lighting sensor circuits - maptun apparently can"](https://www.trionictuning.com/forum/viewtopic.php?t=12064)
+- [BCR Auto: Saab LED enabler](https://github.com/wawawa15/saab-led-enabler)
+
 ## Features
 
-- Monitor CAN IDs, counts, lengths, payloads, and last-seen times.
-- Filter the monitor and wire trace by hexadecimal CAN IDs; the default filter is `24F,249,64F,649`.
-- View filtered RX and diagnostic TX frames, including ISO-TP request and flow-control frames.
 - Connect through any adapter registered by `gocan/v2`, including J2534 adapters.
 - Read and update the UEC parameter at DID `0x4D` using CAN IDs `0x24F -> 0x64F`.
 - Read and update the REC parameter at DID `0x45` using CAN IDs `0x249 -> 0x649`.
-- Preserve the complete returned configuration and change only its leading `0x8B`/`0x00` parameter byte.
+- Populate UEC and REC lighting checkboxes from the read configuration and apply only the known light bits.
+- Preserve the complete returned configuration and change only its parameter bytes.
 - Handle the REC multi-frame ISO-TP response through `ReadDataByIdentifier`.
+- Monitor CAN IDs, counts, lengths, payloads, and last-seen times.
+- Filter the monitor and wire trace by hexadecimal CAN IDs; the default filter is `24F,249,64F,649`.
+- View filtered RX and diagnostic TX frames, including ISO-TP request and flow-control frames.
 
 ## Build
 
