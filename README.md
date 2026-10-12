@@ -1,3 +1,32 @@
+This repository has been made more or less obsolete after the following forum thread:
+[TrionicTuning.com: Saab 93 Led Enabler](https://www.trionictuning.com/forum/viewtopic.php?t=18549)  
+
+After the thread [roffe](https://github.com/roffe) made his code public: [roffe/hcd](https://github.com/roffe/hcd) 
+
+This code had a partial implementation of the following that was revealed there.
+
+Quote from roffe on TrionicTuning.com:
+> Module identifiers
+>
+>```Module  Identifier  Contents
+>UEC     0x90        VIN
+>UEC     0x40        PWM output configuration
+>UEC     0x4D        Bulb check configuration, front
+>REC     0x45        Bulb check configuration, rear
+>```
+>Byte 0 of each configuration is the check interval in ticks of 14.5 ms (0 = checking >off). Byte 1 (and byte 2 for rear turn signals) is a bit mask with one bit per light:
+>
+>```UEC byte 1   Light                 REC byte 1   Light
+>0x80         Front parking lights  0x80         Tail lights
+>0x40         Front fog lights      0x40         Rear fog lights
+>0x20         Low beams             0x20         Stop lights
+>0x10         High beams            0x10         Reverse light
+>0x01         Front turn signals    0x08         License plate
+>byte 2 0x08  Rear turn signals
+>```
+
+So before this was confirmed the bitmask for the lights was correct and the checking interval byte. the rest was to be determined and has now been made public since 11-10-2026 ~16:30
+
 # Go CAN LED Enabler
 
 A Fyne GUI for setting the UEC/REC light checking settings and monitoring CAN traffic through a J2534 adapter.
