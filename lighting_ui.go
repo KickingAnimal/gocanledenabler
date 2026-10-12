@@ -25,13 +25,13 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 	recResponse := widget.NewEntry()
 	recResponse.SetText("649")
 	newLampCheckSlider := func() (*widget.Slider, *widget.Label) {
-		slider := widget.NewSlider(0, 255)
-		slider.Step = 1
-		value := widget.NewLabel("0x8B")
+		slider := widget.NewSlider(0, checkIntervalMilliseconds(255))
+		slider.Step = checkIntervalTickMilliseconds
+		value := widget.NewLabel("2015.5 ms")
 		slider.OnChanged = func(number float64) {
-			value.SetText(fmt.Sprintf("0x%02X", byte(number+0.5)))
+			value.SetText(fmt.Sprintf("%.1f ms", number))
 		}
-		slider.SetValue(0x8B)
+		slider.SetValue(checkIntervalMilliseconds(0x8B))
 		return slider, value
 	}
 	uecLampCheck, uecLampCheckValue := newLampCheckSlider()
@@ -85,10 +85,10 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 		return states
 	}
 	setLampCheck := func(slider *widget.Slider, value byte) {
-		slider.SetValue(float64(value))
+		slider.SetValue(checkIntervalMilliseconds(value))
 	}
 	lampCheckValue := func(slider *widget.Slider) byte {
-		return byte(slider.Value + 0.5)
+		return checkIntervalTicks(slider.Value)
 	}
 
 	start := func(requestEntry, responseEntry *widget.Entry, target diagnosticTarget, action func(context.Context, *gocan.Bus, *gmlan.Client, diagnosticTarget) (string, error)) {
@@ -194,7 +194,7 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 			widget.NewLabel("TX"), uecRequest,
 			widget.NewLabel("RX"), uecResponse,
 		),
-		container.NewBorder(widget.NewLabel("Lamp-check byte"), nil, nil, uecLampCheckValue, uecLampCheck),
+		container.NewBorder(widget.NewLabel("Lamp-check interval"), nil, nil, uecLampCheckValue, uecLampCheck),
 		container.NewGridWithColumns(3, uecChecks[0], uecChecks[1], uecChecks[2], uecChecks[3], uecChecks[4]),
 		container.NewHBox(readUEC, applyUEC),
 	)
@@ -204,7 +204,7 @@ func newDiagnosticsTab(bus func() *gocan.Bus, tx func(gocan.Frame)) fyne.CanvasO
 			widget.NewLabel("TX"), recRequest,
 			widget.NewLabel("RX"), recResponse,
 		),
-		container.NewBorder(widget.NewLabel("Lamp-check byte"), nil, nil, recLampCheckValue, recLampCheck),
+		container.NewBorder(widget.NewLabel("Lamp-check interval"), nil, nil, recLampCheckValue, recLampCheck),
 		container.NewGridWithColumns(3, recChecks[0], recChecks[1], recChecks[2], recChecks[3], recChecks[4], recChecks[5], recChecks[6]),
 		container.NewHBox(readREC, applyREC),
 	)

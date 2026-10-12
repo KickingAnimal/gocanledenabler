@@ -8,7 +8,8 @@ This code had a partial implementation of the following that was revealed there.
 Quote from roffe on TrionicTuning.com:
 > Module identifiers
 >
->```Module  Identifier  Contents
+>```
+>Module  Identifier  Contents
 >UEC     0x90        VIN
 >UEC     0x40        PWM output configuration
 >UEC     0x4D        Bulb check configuration, front
@@ -16,7 +17,8 @@ Quote from roffe on TrionicTuning.com:
 >```
 >Byte 0 of each configuration is the check interval in ticks of 14.5 ms (0 = checking >off). Byte 1 (and byte 2 for rear turn signals) is a bit mask with one bit per light:
 >
->```UEC byte 1   Light                 REC byte 1   Light
+>```
+>UEC byte 1   Light                 REC byte 1   Light
 >0x80         Front parking lights  0x80         Tail lights
 >0x40         Front fog lights      0x40         Rear fog lights
 >0x20         Low beams             0x20         Stop lights

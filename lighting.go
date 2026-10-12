@@ -1,6 +1,26 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
+
+const checkIntervalTickMilliseconds = 14.5
+
+func checkIntervalMilliseconds(value byte) float64 {
+	return float64(value) * checkIntervalTickMilliseconds
+}
+
+func checkIntervalTicks(milliseconds float64) byte {
+	ticks := math.Round(milliseconds / checkIntervalTickMilliseconds)
+	if ticks < 0 {
+		return 0
+	}
+	if ticks > 255 {
+		return 255
+	}
+	return byte(ticks)
+}
 
 type LightFlag struct {
 	Name string
